@@ -1,5 +1,7 @@
 #include <SFML/Graphics.hpp>
+
 #include "GameObject.hpp"
+#include "Scene.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -14,7 +16,7 @@ int main() {
     // Create the application window
     sf::RenderWindow window(
         sf::VideoMode({800, 600}),
-        "Real Engine Research - Z-Layer Rendering"
+        "Real Engine Research - Scene Saving"
     );
 
     window.setFramerateLimit(60);
@@ -25,6 +27,9 @@ int main() {
     player.setPosition({50.f, 50.f});
 
     const float speed = 5.f;
+
+    // Create our scene manager
+    Scene scene;
 
     // Store our game objects
     std::vector<GameObject> objects;
@@ -53,7 +58,7 @@ int main() {
         3
     );
 
-    // Cyan background rectangle - Layer 0
+    // Cyan rectangle - Layer 0
     objects.emplace_back(
         sf::Vector2f{300.f, 300.f},
         sf::Vector2f{140.f, 140.f},
@@ -62,7 +67,6 @@ int main() {
     );
 
     // Yellow rectangle - Layer 4
-    // This is the object whose layer we will change
     objects.emplace_back(
         sf::Vector2f{350.f, 350.f},
         sf::Vector2f{140.f, 140.f},
@@ -70,16 +74,16 @@ int main() {
         4
     );
 
-    // Keep track of the yellow object using its index
+    // Keep track of the yellow object
     const std::size_t selectedObject = 4;
 
-    // Store drawing order separately from the objects
+    // Store drawing order separately
     std::vector<std::size_t> renderOrder(objects.size());
 
-    // Main game loop
+    // Main application loop
     while (window.isOpen()) {
 
-        // Handle window events
+        // Handle events
         while (const auto event = window.pollEvent()) {
 
             if (event->is<sf::Event::Closed>()) {
@@ -89,12 +93,12 @@ int main() {
             if (const auto* key =
                     event->getIf<sf::Event::KeyPressed>()) {
 
-                // Exit the application
+                // Close application
                 if (key->code == sf::Keyboard::Key::Escape) {
                     window.close();
                 }
 
-                // Reset player position
+                // Reset player
                 if (key->code == sf::Keyboard::Key::R) {
                     player.setPosition({50.f, 50.f});
                 }
@@ -118,10 +122,15 @@ int main() {
                         currentLayer + 1
                     );
                 }
+
+                // Save the scene using F5
+                if (key->code == sf::Keyboard::Key::F5) {
+                    scene.save(objects, "scenes/example.scene");
+                }
             }
         }
 
-        // Save the player's current position
+        // Save player's previous position
         sf::Vector2f oldPosition = player.getPosition();
         sf::Vector2f position = oldPosition;
 
@@ -146,14 +155,13 @@ int main() {
             position.x += speed;
         }
 
-        // Prevent the player from leaving the window
+        // Keep player inside window
         position.x = std::clamp(position.x, 0.f, 760.f);
         position.y = std::clamp(position.y, 0.f, 560.f);
 
-        // Temporarily move the player
         player.setPosition(position);
 
-        // Check for collisions with game objects
+        // Collision detection
         bool collided = false;
 
         for (const auto& object : objects) {
@@ -166,7 +174,6 @@ int main() {
             }
         }
 
-        // Respond to collisions
         if (collided) {
             player.setPosition(oldPosition);
             player.setFillColor(sf::Color::Yellow);
@@ -174,14 +181,14 @@ int main() {
             player.setFillColor(sf::Color::Green);
         }
 
-        // Create an index list: 0, 1, 2, 3, 4
+        // Prepare drawing order
         std::iota(
             renderOrder.begin(),
             renderOrder.end(),
             0
         );
 
-        // Sort indices by each object's Z-layer
+        // Sort objects by Z-layer
         std::stable_sort(
             renderOrder.begin(),
             renderOrder.end(),
@@ -191,18 +198,14 @@ int main() {
             }
         );
 
-        // Clear the window
+        // Render
         window.clear(sf::Color(30, 30, 40));
 
-        // Draw objects from lowest layer to highest
         for (std::size_t index : renderOrder) {
             objects[index].draw(window);
         }
 
-        // Draw player on top
         window.draw(player);
-
-        // Display the completed frame
         window.display();
     }
 

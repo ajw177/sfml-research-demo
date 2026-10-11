@@ -10,6 +10,7 @@ find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
 add_executable(sfml-research-demo
     src/main.cpp
     src/GameObject.cpp
+    src/Scene.cpp
 )
 
 target_include_directories(sfml-research-demo PRIVATE include)

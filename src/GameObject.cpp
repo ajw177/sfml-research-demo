@@ -20,6 +20,18 @@ sf::Vector2f GameObject::getPosition() const {
     return shape.getPosition();
 }
 
+sf::Vector2f GameObject::getSize() const {
+    return shape.getSize();
+}
+
+void GameObject::setColor(sf::Color color) {
+    shape.setFillColor(color);
+}
+
+sf::Color GameObject::getColor() const {
+    return shape.getFillColor();
+}
+
 sf::FloatRect GameObject::getBounds() const {
     return shape.getGlobalBounds();
 }
