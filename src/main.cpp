@@ -4,6 +4,7 @@
 #include "Scene.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <numeric>
 #include <vector>
 
@@ -16,7 +17,7 @@ int main() {
     // Create the application window
     sf::RenderWindow window(
         sf::VideoMode({800, 600}),
-        "Real Engine Research - Scene Saving"
+        "Real Engine Research - Scene Save and Load"
     );
 
     window.setFramerateLimit(60);
@@ -31,7 +32,7 @@ int main() {
     // Create our scene manager
     Scene scene;
 
-    // Store our game objects
+    // Store game objects
     std::vector<GameObject> objects;
 
     // Red horizontal obstacle - Layer 1
@@ -74,11 +75,11 @@ int main() {
         4
     );
 
-    // Keep track of the yellow object
-    const std::size_t selectedObject = 4;
+    // Select the yellow object initially
+    std::size_t selectedObject = 4;
 
     // Store drawing order separately
-    std::vector<std::size_t> renderOrder(objects.size());
+    std::vector<std::size_t> renderOrder;
 
     // Main application loop
     while (window.isOpen()) {
@@ -103,8 +104,10 @@ int main() {
                     player.setPosition({50.f, 50.f});
                 }
 
-                // Lower yellow object's Z-layer
-                if (key->code == sf::Keyboard::Key::Q) {
+                // Lower selected object's Z-layer
+                if (key->code == sf::Keyboard::Key::Q &&
+                    selectedObject < objects.size()) {
+
                     int currentLayer =
                         objects[selectedObject].getLayer();
 
@@ -113,8 +116,10 @@ int main() {
                     );
                 }
 
-                // Raise yellow object's Z-layer
-                if (key->code == sf::Keyboard::Key::E) {
+                // Raise selected object's Z-layer
+                if (key->code == sf::Keyboard::Key::E &&
+                    selectedObject < objects.size()) {
+
                     int currentLayer =
                         objects[selectedObject].getLayer();
 
@@ -123,9 +128,26 @@ int main() {
                     );
                 }
 
-                // Save the scene using F5
+                // Save the scene
                 if (key->code == sf::Keyboard::Key::F5) {
                     scene.save(objects, "scenes/example.scene");
+                }
+
+                // Load the scene
+                if (key->code == sf::Keyboard::Key::F9) {
+
+                    if (scene.load(objects, "scenes/example.scene")) {
+
+                        // Reset selection after loading
+                        if (objects.empty()) {
+                            selectedObject = 0;
+                        } else {
+                            selectedObject = objects.size() - 1;
+                        }
+
+                        std::cout << "Scene restored!"
+                                  << std::endl;
+                    }
                 }
             }
         }
@@ -180,6 +202,9 @@ int main() {
         } else {
             player.setFillColor(sf::Color::Green);
         }
+
+        // Resize drawing order to match the current scene
+        renderOrder.resize(objects.size());
 
         // Prepare drawing order
         std::iota(
