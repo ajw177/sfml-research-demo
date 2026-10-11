@@ -15,7 +15,7 @@ bool checkCollision(const sf::FloatRect& a, const sf::FloatRect& b) {
 int main() {
     sf::RenderWindow window(
         sf::VideoMode({800, 600}),
-        "Real Engine Research - Scene Editor"
+        "Real Engine Research - Interactive Scene Editor"
     );
 
     window.setFramerateLimit(60);
@@ -61,11 +61,13 @@ int main() {
 
     std::vector<std::size_t> renderOrder;
 
-    // -1 means no object is selected
     int selectedObject = -1;
-
     bool dragging = false;
+
     sf::Vector2f dragOffset{0.f, 0.f};
+
+    // Used to give newly created objects different colors
+    int objectCounter = 0;
 
     while (window.isOpen()) {
 
@@ -86,6 +88,7 @@ int main() {
                     player.setPosition({50.f, 50.f});
                 }
 
+                // Lower selected object's layer
                 if (key->code == sf::Keyboard::Key::Q &&
                     selectedObject >= 0) {
 
@@ -93,6 +96,7 @@ int main() {
                     object.setLayer(object.getLayer() - 1);
                 }
 
+                // Raise selected object's layer
                 if (key->code == sf::Keyboard::Key::E &&
                     selectedObject >= 0) {
 
@@ -100,11 +104,71 @@ int main() {
                     object.setLayer(object.getLayer() + 1);
                 }
 
+                // Create a new object
+                if (key->code == sf::Keyboard::Key::N) {
+
+                    sf::Vector2f mousePosition =
+                        window.mapPixelToCoords(
+                            sf::Mouse::getPosition(window)
+                        );
+
+                    sf::Color colors[] = {
+                        sf::Color::Green,
+                        sf::Color::Blue,
+                        sf::Color::Magenta,
+                        sf::Color::Cyan,
+                        sf::Color::Yellow,
+                        sf::Color::Red
+                    };
+
+                    sf::Color color = colors[objectCounter % 6];
+                    objectCounter++;
+
+                    // Deselect previous object
+                    for (auto& object : objects) {
+                        object.setSelected(false);
+                    }
+
+                    objects.emplace_back(
+                        mousePosition,
+                        sf::Vector2f{80.f, 80.f},
+                        color,
+                        5
+                    );
+
+                    selectedObject =
+                        static_cast<int>(objects.size()) - 1;
+
+                    objects[selectedObject].setSelected(true);
+
+                    std::cout << "Created new object. Total: "
+                              << objects.size() << std::endl;
+                }
+
+                // Delete selected object
+                if ((key->code == sf::Keyboard::Key::Delete ||
+                     key->code == sf::Keyboard::Key::Backspace) &&
+                    selectedObject >= 0) {
+
+                    objects.erase(
+                        objects.begin() + selectedObject
+                    );
+
+                    selectedObject = -1;
+                    dragging = false;
+
+                    std::cout << "Object deleted. Total: "
+                              << objects.size() << std::endl;
+                }
+
+                // Save scene
                 if (key->code == sf::Keyboard::Key::F5) {
                     scene.save(objects, "scenes/example.scene");
                 }
 
+                // Load scene
                 if (key->code == sf::Keyboard::Key::F9) {
+
                     if (scene.load(objects, "scenes/example.scene")) {
                         selectedObject = -1;
                         dragging = false;
@@ -112,7 +176,7 @@ int main() {
                 }
             }
 
-            // Select an object when the left mouse button is pressed
+            // Mouse selection
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseButtonPressed>()) {
 
@@ -121,7 +185,6 @@ int main() {
                     sf::Vector2f mousePosition =
                         window.mapPixelToCoords(mouse->position);
 
-                    // Clear previous selection
                     for (auto& object : objects) {
                         object.setSelected(false);
                     }
@@ -129,7 +192,6 @@ int main() {
                     selectedObject = -1;
                     dragging = false;
 
-                    // Check topmost objects first
                     for (auto it = renderOrder.rbegin();
                          it != renderOrder.rend(); ++it) {
 
@@ -139,6 +201,7 @@ int main() {
                                 .contains(mousePosition)) {
 
                             selectedObject = static_cast<int>(index);
+
                             objects[index].setSelected(true);
 
                             dragOffset =
@@ -152,7 +215,7 @@ int main() {
                 }
             }
 
-            // Stop dragging when mouse is released
+            // Mouse release
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseButtonReleased>()) {
 
@@ -161,7 +224,7 @@ int main() {
                 }
             }
 
-            // Move selected object with the mouse
+            // Mouse dragging
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseMoved>()) {
 
@@ -170,10 +233,9 @@ int main() {
                     sf::Vector2f mousePosition =
                         window.mapPixelToCoords(mouse->position);
 
-                    sf::Vector2f newPosition =
-                        mousePosition - dragOffset;
-
-                    objects[selectedObject].setPosition(newPosition);
+                    objects[selectedObject].setPosition(
+                        mousePosition - dragOffset
+                    );
                 }
             }
         }
