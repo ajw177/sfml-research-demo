@@ -38,12 +38,15 @@ int main() {
 
     window.setFramerateLimit(60);
 
+    // Editor mode
+    bool playMode = false;
+
     // Grid settings
     const float gridSize = 40.f;
     bool showGrid = true;
     bool snapToGrid = false;
 
-    // Create grid lines (SFML 3 compatible)
+    // Create grid lines
     sf::VertexArray grid(sf::PrimitiveType::Lines);
 
     // Vertical grid lines
@@ -74,12 +77,14 @@ int main() {
         grid.append(right);
     }
 
-    // Create the player
+    // Create player
     sf::RectangleShape player({40.f, 40.f});
     player.setFillColor(sf::Color::Green);
     player.setPosition({50.f, 50.f});
 
-    // Movement and physics settings
+    const sf::Vector2f playerStart{50.f, 50.f};
+
+    // Physics settings
     const float moveSpeed = 250.f;
     const float jumpStrength = -500.f;
 
@@ -94,7 +99,7 @@ int main() {
     // Store game objects
     std::vector<GameObject> objects;
 
-    // Red horizontal obstacle
+    // Red platform
     objects.emplace_back(
         sf::Vector2f{200.f, 150.f},
         sf::Vector2f{200.f, 40.f},
@@ -102,7 +107,7 @@ int main() {
         1
     );
 
-    // Blue vertical obstacle
+    // Blue platform
     objects.emplace_back(
         sf::Vector2f{450.f, 250.f},
         sf::Vector2f{40.f, 200.f},
@@ -110,7 +115,7 @@ int main() {
         2
     );
 
-    // Magenta horizontal obstacle
+    // Magenta platform
     objects.emplace_back(
         sf::Vector2f{100.f, 450.f},
         sf::Vector2f{200.f, 40.f},
@@ -134,23 +139,28 @@ int main() {
         4
     );
 
+    // Backup of scene before entering Play Mode
+    std::vector<GameObject> sceneBackup;
+
     // Rendering order
     std::vector<std::size_t> renderOrder;
 
-    // Selection and dragging
+    // Object selection
     int selectedObject = -1;
     bool dragging = false;
 
     sf::Vector2f dragOffset{0.f, 0.f};
 
-    // Counter for new object colors
     int objectCounter = 0;
 
-    // Update window title
+    // Update the window title
     auto updateWindowTitle = [&]() {
-        std::string title = "Real Engine Research | Grid: ";
+        std::string title = "Real Engine | Mode: ";
 
-        title += showGrid ? "ON" : "OFF";
+        title += playMode ? "PLAY" : "EDIT";
+
+        title += " | Grid: ";
+        title += (showGrid && !playMode) ? "ON" : "OFF";
 
         title += " | Snap: ";
         title += snapToGrid ? "ON" : "OFF";
@@ -161,355 +171,8 @@ int main() {
         return title;
     };
 
-    window.setTitle(updateWindowTitle());
-
-    // Main application loop
-    while (window.isOpen()) {
-
-        // Calculate delta time
-        float deltaTime = clock.restart().asSeconds();
-
-        // Limit unusually large time steps
-        deltaTime = std::min(deltaTime, 0.033f);
-
-        // Handle events
-        while (const auto event = window.pollEvent()) {
-
-            // Close window
-            if (event->is<sf::Event::Closed>()) {
-                window.close();
-            }
-
-            // Keyboard input
-            if (const auto* key =
-                    event->getIf<sf::Event::KeyPressed>()) {
-
-                // Exit application
-                if (key->code == sf::Keyboard::Key::Escape) {
-                    window.close();
-                }
-
-                // Reset player
-                if (key->code == sf::Keyboard::Key::R) {
-                    player.setPosition({50.f, 50.f});
-                    velocity = {0.f, 0.f};
-                    physics.reset();
-                }
-
-                // Toggle grid visibility
-                if (key->code == sf::Keyboard::Key::H) {
-                    showGrid = !showGrid;
-
-                    std::cout << "Grid visibility: "
-                              << (showGrid ? "ON" : "OFF")
-                              << std::endl;
-                }
-
-                // Toggle grid snapping
-                if (key->code == sf::Keyboard::Key::T) {
-                    snapToGrid = !snapToGrid;
-
-                    std::cout << "Grid snapping: "
-                              << (snapToGrid ? "ON" : "OFF")
-                              << std::endl;
-                }
-
-                // Toggle gravity
-                if (key->code == sf::Keyboard::Key::G) {
-                    bool enabled = !physics.isGravityEnabled();
-
-                    physics.setGravityEnabled(enabled);
-                    velocity = {0.f, 0.f};
-
-                    std::cout << "Gravity: "
-                              << (enabled ? "ON" : "OFF")
-                              << std::endl;
-                }
-
-                // Jump when grounded
-                if (key->code == sf::Keyboard::Key::Space &&
-                    physics.isGravityEnabled() &&
-                    physics.isGrounded()) {
-
-                    velocity.y = jumpStrength;
-                }
-
-                // Lower selected object's Z-layer
-                if (key->code == sf::Keyboard::Key::Q &&
-                    selectedObject >= 0) {
-
-                    GameObject& object = objects[selectedObject];
-
-                    object.setLayer(object.getLayer() - 1);
-                }
-
-                // Raise selected object's Z-layer
-                if (key->code == sf::Keyboard::Key::E &&
-                    selectedObject >= 0) {
-
-                    GameObject& object = objects[selectedObject];
-
-                    object.setLayer(object.getLayer() + 1);
-                }
-
-                // Create a new object
-                if (key->code == sf::Keyboard::Key::N) {
-
-                    sf::Vector2f mousePosition =
-                        window.mapPixelToCoords(
-                            sf::Mouse::getPosition(window)
-                        );
-
-                    // Snap new objects to the grid
-                    if (snapToGrid) {
-                        mousePosition =
-                            snapPosition(mousePosition, gridSize);
-                    }
-
-                    // Available object colors
-                    sf::Color colors[] = {
-                        sf::Color::Green,
-                        sf::Color::Blue,
-                        sf::Color::Magenta,
-                        sf::Color::Cyan,
-                        sf::Color::Yellow,
-                        sf::Color::Red
-                    };
-
-                    sf::Color color = colors[objectCounter % 6];
-                    objectCounter++;
-
-                    // Deselect previous object
-                    for (auto& object : objects) {
-                        object.setSelected(false);
-                    }
-
-                    // Create new rectangle
-                    objects.emplace_back(
-                        mousePosition,
-                        sf::Vector2f{80.f, 80.f},
-                        color,
-                        5
-                    );
-
-                    // Select newly created object
-                    selectedObject =
-                        static_cast<int>(objects.size()) - 1;
-
-                    objects[selectedObject].setSelected(true);
-
-                    std::cout << "Created object at: "
-                              << mousePosition.x << ", "
-                              << mousePosition.y << std::endl;
-                }
-
-                // Delete selected object
-                if ((key->code == sf::Keyboard::Key::Delete ||
-                     key->code == sf::Keyboard::Key::Backspace) &&
-                    selectedObject >= 0) {
-
-                    objects.erase(
-                        objects.begin() + selectedObject
-                    );
-
-                    selectedObject = -1;
-                    dragging = false;
-
-                    std::cout << "Object deleted. Total: "
-                              << objects.size() << std::endl;
-                }
-
-                // Save scene
-                if (key->code == sf::Keyboard::Key::F5) {
-                    scene.save(objects, "scenes/example.scene");
-                }
-
-                // Load scene
-                if (key->code == sf::Keyboard::Key::F9) {
-
-                    if (scene.load(objects, "scenes/example.scene")) {
-                        selectedObject = -1;
-                        dragging = false;
-                    }
-                }
-            }
-
-            // Mouse selection
-            if (const auto* mouse =
-                    event->getIf<sf::Event::MouseButtonPressed>()) {
-
-                if (mouse->button == sf::Mouse::Button::Left) {
-
-                    sf::Vector2f mousePosition =
-                        window.mapPixelToCoords(mouse->position);
-
-                    // Clear previous selection
-                    for (auto& object : objects) {
-                        object.setSelected(false);
-                    }
-
-                    selectedObject = -1;
-                    dragging = false;
-
-                    // Check objects from front to back
-                    for (auto it = renderOrder.rbegin();
-                         it != renderOrder.rend(); ++it) {
-
-                        std::size_t index = *it;
-
-                        if (objects[index].getBounds()
-                                .contains(mousePosition)) {
-
-                            selectedObject =
-                                static_cast<int>(index);
-
-                            objects[index].setSelected(true);
-
-                            // Preserve cursor offset while dragging
-                            dragOffset =
-                                mousePosition -
-                                objects[index].getPosition();
-
-                            dragging = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Stop dragging when mouse is released
-            if (const auto* mouse =
-                    event->getIf<sf::Event::MouseButtonReleased>()) {
-
-                if (mouse->button == sf::Mouse::Button::Left) {
-                    dragging = false;
-                }
-            }
-
-            // Move selected object with mouse
-            if (const auto* mouse =
-                    event->getIf<sf::Event::MouseMoved>()) {
-
-                if (dragging && selectedObject >= 0) {
-
-                    sf::Vector2f mousePosition =
-                        window.mapPixelToCoords(mouse->position);
-
-                    sf::Vector2f newPosition =
-                        mousePosition - dragOffset;
-
-                    // Snap dragged objects when enabled
-                    if (snapToGrid) {
-                        newPosition =
-                            snapPosition(newPosition, gridSize);
-                    }
-
-                    objects[selectedObject].setPosition(
-                        newPosition
-                    );
-                }
-            }
-        }
-
-        // Horizontal player movement
-        velocity.x = 0.f;
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
-            sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
-
-            velocity.x -= moveSpeed;
-        }
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
-            sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
-
-            velocity.x += moveSpeed;
-        }
-
-        // Free vertical movement when gravity is disabled
-        if (!physics.isGravityEnabled()) {
-
-            velocity.y = 0.f;
-
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
-                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up)) {
-
-                velocity.y -= moveSpeed;
-            }
-
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
-                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down)) {
-
-                velocity.y += moveSpeed;
-            }
-        }
-
-        // Move player horizontally
-        sf::Vector2f oldPosition = player.getPosition();
-
-        player.move({velocity.x * deltaTime, 0.f});
-
-        // Check horizontal collisions
-        bool horizontalCollision = false;
-
-        for (const auto& object : objects) {
-
-            if (checkCollision(
-                    player.getGlobalBounds(),
-                    object.getBounds())) {
-
-                horizontalCollision = true;
-                break;
-            }
-        }
-
-        // Undo movement if collision occurred
-        if (horizontalCollision) {
-            player.setPosition(oldPosition);
-        }
-
-        // Apply vertical physics
-        if (physics.isGravityEnabled()) {
-
-            physics.update(
-                player,
-                velocity,
-                objects,
-                deltaTime
-            );
-
-        } else {
-
-            // Free vertical movement without gravity
-            sf::Vector2f beforeVertical =
-                player.getPosition();
-
-            player.move({0.f, velocity.y * deltaTime});
-
-            for (const auto& object : objects) {
-
-                if (checkCollision(
-                        player.getGlobalBounds(),
-                        object.getBounds())) {
-
-                    player.setPosition(beforeVertical);
-                    break;
-                }
-            }
-        }
-
-        // Keep player inside window
-        sf::Vector2f position = player.getPosition();
-
-        position.x = std::clamp(position.x, 0.f, 760.f);
-
-        if (!physics.isGravityEnabled()) {
-            position.y = std::clamp(position.y, 0.f, 560.f);
-        }
-
-        player.setPosition(position);
-
-        // Prepare Z-layer rendering order
+    // Update the order in which objects are drawn
+    auto updateRenderOrder = [&]() {
         renderOrder.resize(objects.size());
 
         std::iota(
@@ -526,27 +189,381 @@ int main() {
                        objects[b].getLayer();
             }
         );
+    };
 
-        // Update window title
+    // Reset player and physics state
+    auto resetPlayer = [&]() {
+        player.setPosition(playerStart);
+        velocity = {0.f, 0.f};
+        physics.reset();
+    };
+
+    // Switch between Edit and Play modes
+    auto toggleMode = [&]() {
+        if (!playMode) {
+            // Enter Play Mode
+            sceneBackup = objects;
+
+            // Remove editor selection
+            for (auto& object : objects) {
+                object.setSelected(false);
+            }
+
+            selectedObject = -1;
+            dragging = false;
+
+            resetPlayer();
+
+            physics.setGravityEnabled(true);
+            playMode = true;
+
+            std::cout << "Entered PLAY mode" << std::endl;
+        } else {
+            // Return to Edit Mode
+            objects = sceneBackup;
+
+            selectedObject = -1;
+            dragging = false;
+
+            resetPlayer();
+
+            physics.setGravityEnabled(false);
+            playMode = false;
+
+            std::cout << "Returned to EDIT mode" << std::endl;
+            std::cout << "Scene restored" << std::endl;
+        }
+
+        updateRenderOrder();
+        window.setTitle(updateWindowTitle());
+    };
+
+    updateRenderOrder();
+    window.setTitle(updateWindowTitle());
+
+    // Main application loop
+    while (window.isOpen()) {
+        float deltaTime = clock.restart().asSeconds();
+        deltaTime = std::min(deltaTime, 0.033f);
+
+        // Handle events
+        while (const auto event = window.pollEvent()) {
+
+            // Close window
+            if (event->is<sf::Event::Closed>()) {
+                window.close();
+            }
+
+            // Keyboard input
+            if (const auto* key =
+                    event->getIf<sf::Event::KeyPressed>()) {
+
+                // Exit
+                if (key->code == sf::Keyboard::Key::Escape) {
+                    window.close();
+                }
+
+                // Switch between Edit and Play modes
+                if (key->code == sf::Keyboard::Key::Tab) {
+                    toggleMode();
+                    continue;
+                }
+
+                // Play Mode controls
+                if (playMode) {
+
+                    // Reset player
+                    if (key->code == sf::Keyboard::Key::R) {
+                        resetPlayer();
+                    }
+
+                    // Jump
+                    if (key->code == sf::Keyboard::Key::Space &&
+                        physics.isGrounded()) {
+
+                        velocity.y = jumpStrength;
+                    }
+
+                    // Skip editor-only keyboard controls
+                    continue;
+                }
+
+                // EDIT MODE CONTROLS
+
+                // Toggle grid
+                if (key->code == sf::Keyboard::Key::H) {
+                    showGrid = !showGrid;
+
+                    std::cout << "Grid: "
+                              << (showGrid ? "ON" : "OFF")
+                              << std::endl;
+                }
+
+                // Toggle snapping
+                if (key->code == sf::Keyboard::Key::T) {
+                    snapToGrid = !snapToGrid;
+
+                    std::cout << "Snapping: "
+                              << (snapToGrid ? "ON" : "OFF")
+                              << std::endl;
+                }
+
+                // Lower selected object's layer
+                if (key->code == sf::Keyboard::Key::Q &&
+                    selectedObject >= 0) {
+
+                    GameObject& object = objects[selectedObject];
+                    object.setLayer(object.getLayer() - 1);
+
+                    updateRenderOrder();
+                }
+
+                // Raise selected object's layer
+                if (key->code == sf::Keyboard::Key::E &&
+                    selectedObject >= 0) {
+
+                    GameObject& object = objects[selectedObject];
+                    object.setLayer(object.getLayer() + 1);
+
+                    updateRenderOrder();
+                }
+
+                // Create a new object
+                if (key->code == sf::Keyboard::Key::N) {
+
+                    sf::Vector2f mousePosition =
+                        window.mapPixelToCoords(
+                            sf::Mouse::getPosition(window)
+                        );
+
+                    if (snapToGrid) {
+                        mousePosition =
+                            snapPosition(mousePosition, gridSize);
+                    }
+
+                    sf::Color colors[] = {
+                        sf::Color::Green,
+                        sf::Color::Blue,
+                        sf::Color::Magenta,
+                        sf::Color::Cyan,
+                        sf::Color::Yellow,
+                        sf::Color::Red
+                    };
+
+                    sf::Color color = colors[objectCounter % 6];
+                    objectCounter++;
+
+                    for (auto& object : objects) {
+                        object.setSelected(false);
+                    }
+
+                    objects.emplace_back(
+                        mousePosition,
+                        sf::Vector2f{80.f, 80.f},
+                        color,
+                        5
+                    );
+
+                    selectedObject =
+                        static_cast<int>(objects.size()) - 1;
+
+                    objects[selectedObject].setSelected(true);
+
+                    updateRenderOrder();
+
+                    std::cout << "Object created" << std::endl;
+                }
+
+                // Delete selected object
+                if ((key->code == sf::Keyboard::Key::Delete ||
+                     key->code == sf::Keyboard::Key::Backspace) &&
+                    selectedObject >= 0) {
+
+                    objects.erase(
+                        objects.begin() + selectedObject
+                    );
+
+                    selectedObject = -1;
+                    dragging = false;
+
+                    updateRenderOrder();
+
+                    std::cout << "Object deleted" << std::endl;
+                }
+
+                // Save scene
+                if (key->code == sf::Keyboard::Key::F5) {
+                    scene.save(objects, "scenes/example.scene");
+                }
+
+                // Load scene
+                if (key->code == sf::Keyboard::Key::F9) {
+                    if (scene.load(objects, "scenes/example.scene")) {
+                        selectedObject = -1;
+                        dragging = false;
+
+                        updateRenderOrder();
+                    }
+                }
+            }
+
+            // Mouse input is only active in Edit Mode
+            if (playMode) {
+                continue;
+            }
+
+            // Select objects
+            if (const auto* mouse =
+                    event->getIf<sf::Event::MouseButtonPressed>()) {
+
+                if (mouse->button == sf::Mouse::Button::Left) {
+
+                    sf::Vector2f mousePosition =
+                        window.mapPixelToCoords(mouse->position);
+
+                    for (auto& object : objects) {
+                        object.setSelected(false);
+                    }
+
+                    selectedObject = -1;
+                    dragging = false;
+
+                    // Select topmost object
+                    for (auto it = renderOrder.rbegin();
+                         it != renderOrder.rend(); ++it) {
+
+                        std::size_t index = *it;
+
+                        if (objects[index].getBounds()
+                                .contains(mousePosition)) {
+
+                            selectedObject =
+                                static_cast<int>(index);
+
+                            objects[index].setSelected(true);
+
+                            dragOffset =
+                                mousePosition -
+                                objects[index].getPosition();
+
+                            dragging = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Stop dragging
+            if (const auto* mouse =
+                    event->getIf<sf::Event::MouseButtonReleased>()) {
+
+                if (mouse->button == sf::Mouse::Button::Left) {
+                    dragging = false;
+                }
+            }
+
+            // Drag selected object
+            if (const auto* mouse =
+                    event->getIf<sf::Event::MouseMoved>()) {
+
+                if (dragging && selectedObject >= 0) {
+
+                    sf::Vector2f mousePosition =
+                        window.mapPixelToCoords(mouse->position);
+
+                    sf::Vector2f newPosition =
+                        mousePosition - dragOffset;
+
+                    if (snapToGrid) {
+                        newPosition =
+                            snapPosition(newPosition, gridSize);
+                    }
+
+                    objects[selectedObject].setPosition(newPosition);
+                }
+            }
+        }
+
+        // Only run player movement and physics in Play Mode
+        if (playMode) {
+
+            velocity.x = 0.f;
+
+            // Move left
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
+
+                velocity.x -= moveSpeed;
+            }
+
+            // Move right
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
+
+                velocity.x += moveSpeed;
+            }
+
+            // Horizontal movement
+            sf::Vector2f oldPosition = player.getPosition();
+
+            player.move({velocity.x * deltaTime, 0.f});
+
+            bool horizontalCollision = false;
+
+            for (const auto& object : objects) {
+                if (checkCollision(
+                        player.getGlobalBounds(),
+                        object.getBounds())) {
+
+                    horizontalCollision = true;
+                    break;
+                }
+            }
+
+            if (horizontalCollision) {
+                player.setPosition(oldPosition);
+            }
+
+            // Gravity and vertical collisions
+            physics.update(
+                player,
+                velocity,
+                objects,
+                deltaTime
+            );
+
+            // Keep player inside window horizontally
+            sf::Vector2f position = player.getPosition();
+
+            position.x = std::clamp(position.x, 0.f, 760.f);
+
+            player.setPosition(position);
+        }
+
+        // Update rendering order
+        updateRenderOrder();
+
+        // Update title
         window.setTitle(updateWindowTitle());
 
-        // Clear window
+        // Clear screen
         window.clear(sf::Color(30, 30, 40));
 
-        // Draw grid behind objects
-        if (showGrid) {
+        // Grid is visible only in Edit Mode
+        if (!playMode && showGrid) {
             window.draw(grid);
         }
 
-        // Draw objects in Z-layer order
+        // Draw scene objects
         for (std::size_t index : renderOrder) {
             objects[index].draw(window);
         }
 
-        // Draw player
-        window.draw(player);
+        // Draw player only in Play Mode
+        if (playMode) {
+            window.draw(player);
+        }
 
-        // Display frame
         window.display();
     }
 
