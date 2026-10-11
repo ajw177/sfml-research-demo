@@ -1,4 +1,6 @@
 #include <SFML/Graphics.hpp>
+#include <imgui.h>
+#include <imgui-SFML.h>
 
 #include "GameObject.hpp"
 #include "Scene.hpp"
@@ -28,61 +30,76 @@ sf::Vector2f snapPosition(sf::Vector2f position, float gridSize) {
 
 int main() {
     sf::RenderWindow window(
-        sf::VideoMode({800, 600}),
-        "Real Engine Research - Scene Editor"
+        sf::VideoMode({1000, 700}),
+        "Real Engine Research - ImGui Editor"
     );
 
     window.setFramerateLimit(60);
 
-    bool playMode = false;
+    // Initialize Dear ImGui
+    if (!ImGui::SFML::Init(window, false)) {
+        std::cerr << "Failed to initialize ImGui-SFML\n";
+        return 1;
+    }
 
-    const float gridSize = 40.f;
+    // Register a default font
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->AddFontDefault();
+
+    // Editor settings
+    bool playMode = false;
     bool showGrid = true;
     bool snapToGrid = false;
 
+    const float gridSize = 40.f;
+    const sf::Vector2f playerStart{50.f, 50.f};
+
+    const float moveSpeed = 250.f;
+    const float jumpStrength = -500.f;
+
+    // Create grid
     sf::VertexArray grid(sf::PrimitiveType::Lines);
 
-    for (float x = 0.f; x <= 800.f; x += gridSize) {
+    for (float x = 0.f; x <= 1000.f; x += gridSize) {
         sf::Vertex top;
         top.position = {x, 0.f};
         top.color = sf::Color(65, 65, 75);
 
         sf::Vertex bottom;
-        bottom.position = {x, 600.f};
+        bottom.position = {x, 700.f};
         bottom.color = sf::Color(65, 65, 75);
 
         grid.append(top);
         grid.append(bottom);
     }
 
-    for (float y = 0.f; y <= 600.f; y += gridSize) {
+    for (float y = 0.f; y <= 700.f; y += gridSize) {
         sf::Vertex left;
         left.position = {0.f, y};
         left.color = sf::Color(65, 65, 75);
 
         sf::Vertex right;
-        right.position = {800.f, y};
+        right.position = {1000.f, y};
         right.color = sf::Color(65, 65, 75);
 
         grid.append(left);
         grid.append(right);
     }
 
+    // Player
     sf::RectangleShape player({40.f, 40.f});
     player.setFillColor(sf::Color::Green);
-    player.setPosition({50.f, 50.f});
-
-    const sf::Vector2f playerStart{50.f, 50.f};
-
-    const float moveSpeed = 250.f;
-    const float jumpStrength = -500.f;
+    player.setPosition(playerStart);
 
     sf::Vector2f velocity{0.f, 0.f};
 
     Physics physics;
-    sf::Clock clock;
     Scene scene;
 
+    sf::Clock clock;
+    sf::Clock deltaClock;
+
+    // Scene objects
     std::vector<GameObject> objects;
 
     objects.emplace_back(
@@ -119,12 +136,12 @@ int main() {
     std::vector<std::size_t> renderOrder;
 
     int selectedObject = -1;
-    bool dragging = false;
-
-    sf::Vector2f dragOffset{0.f, 0.f};
-
     int objectCounter = 0;
 
+    bool dragging = false;
+    sf::Vector2f dragOffset{0.f, 0.f};
+
+    // Update drawing order based on Z-layer
     auto updateRenderOrder = [&]() {
         renderOrder.resize(objects.size());
 
@@ -140,75 +157,113 @@ int main() {
         );
     };
 
-    auto updateWindowTitle = [&]() {
-        std::string title = "Real Engine | ";
-
-        title += playMode ? "PLAY" : "EDIT";
-
-        if (!playMode && selectedObject >= 0 &&
-            selectedObject < static_cast<int>(objects.size())) {
-
-            const GameObject& object = objects[selectedObject];
-
-            sf::Vector2f position = object.getPosition();
-            sf::Vector2f size = object.getSize();
-
-            title += " | Object " + std::to_string(selectedObject);
-            title += " | Pos: (" +
-                     std::to_string(static_cast<int>(position.x)) +
-                     ", " +
-                     std::to_string(static_cast<int>(position.y)) + ")";
-
-            title += " | Size: (" +
-                     std::to_string(static_cast<int>(size.x)) +
-                     ", " +
-                     std::to_string(static_cast<int>(size.y)) + ")";
-
-            title += " | Layer: " +
-                     std::to_string(object.getLayer());
+    // Select an object
+    auto selectObject = [&](int index) {
+        for (auto& object : objects) {
+            object.setSelected(false);
         }
 
-        title += " | Snap: ";
-        title += snapToGrid ? "ON" : "OFF";
+        selectedObject = -1;
+        dragging = false;
 
-        return title;
+        if (index >= 0 &&
+            index < static_cast<int>(objects.size())) {
+
+            selectedObject = index;
+            objects[index].setSelected(true);
+        }
     };
 
+    // Create an object
+    auto createObject = [&]() {
+        sf::Vector2f position{200.f, 200.f};
+
+        if (snapToGrid) {
+            position = snapPosition(position, gridSize);
+        }
+
+        sf::Color colors[] = {
+            sf::Color::Red,
+            sf::Color::Blue,
+            sf::Color::Magenta,
+            sf::Color::Cyan,
+            sf::Color::Yellow,
+            sf::Color::Green
+        };
+
+        sf::Color color = colors[objectCounter % 6];
+        objectCounter++;
+
+        objects.emplace_back(
+            position,
+            sf::Vector2f{80.f, 80.f},
+            color,
+            5
+        );
+
+        selectObject(static_cast<int>(objects.size()) - 1);
+        updateRenderOrder();
+    };
+
+    // Delete selected object
+    auto deleteObject = [&]() {
+        if (selectedObject < 0 ||
+            selectedObject >= static_cast<int>(objects.size())) {
+            return;
+        }
+
+        objects.erase(objects.begin() + selectedObject);
+
+        selectedObject = -1;
+        dragging = false;
+
+        updateRenderOrder();
+    };
+
+    // Save scene
+    auto saveScene = [&]() {
+        scene.save(objects, "scenes/example.scene");
+        std::cout << "Scene saved\n";
+    };
+
+    // Load scene
+    auto loadScene = [&]() {
+        if (scene.load(objects, "scenes/example.scene")) {
+            selectObject(-1);
+            updateRenderOrder();
+            std::cout << "Scene loaded\n";
+        }
+    };
+
+    // Reset player
     auto resetPlayer = [&]() {
         player.setPosition(playerStart);
         velocity = {0.f, 0.f};
         physics.reset();
     };
 
+    // Switch between editor and game
     auto toggleMode = [&]() {
         if (!playMode) {
             sceneBackup = objects;
 
-            for (auto& object : objects) {
-                object.setSelected(false);
-            }
-
-            selectedObject = -1;
-            dragging = false;
-
+            selectObject(-1);
             resetPlayer();
-            physics.setGravityEnabled(true);
 
+            physics.setGravityEnabled(true);
             playMode = true;
 
-            std::cout << "Entered PLAY mode" << std::endl;
+            std::cout << "Entered Play Mode\n";
         } else {
             objects = sceneBackup;
 
-            selectedObject = -1;
-            dragging = false;
-
+            selectObject(-1);
             resetPlayer();
-            physics.setGravityEnabled(false);
 
+            physics.setGravityEnabled(false);
             playMode = false;
 
-            std::cout << "Returned to EDIT mode" << std::endl;
+            std::cout << "Returned to Edit Mode\n";
         }
 
         updateRenderOrder();
@@ -216,20 +271,34 @@ int main() {
 
     updateRenderOrder();
 
+    // Main loop
     while (window.isOpen()) {
-        float deltaTime = clock.restart().asSeconds();
-        deltaTime = std::min(deltaTime, 0.033f);
+        float deltaTime = std::min(
+            clock.restart().asSeconds(),
+            0.033f
+        );
 
         while (const auto event = window.pollEvent()) {
+            // Pass events to ImGui
+            ImGui::SFML::ProcessEvent(window, *event);
+
             if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
+
+            // Prevent editor shortcuts while typing in ImGui
+            bool keyboardCaptured =
+                ImGui::GetIO().WantCaptureKeyboard;
 
             if (const auto* key =
                     event->getIf<sf::Event::KeyPressed>()) {
 
                 if (key->code == sf::Keyboard::Key::Escape) {
                     window.close();
+                }
+
+                if (keyboardCaptured) {
+                    continue;
                 }
 
                 if (key->code == sf::Keyboard::Key::Tab) {
@@ -250,24 +319,31 @@ int main() {
                     continue;
                 }
 
-                // Edit mode: grid visibility
+                // Editor keyboard shortcuts
                 if (key->code == sf::Keyboard::Key::H) {
                     showGrid = !showGrid;
                 }
 
-                // Edit mode: grid snapping
                 if (key->code == sf::Keyboard::Key::T) {
                     snapToGrid = !snapToGrid;
                 }
 
-                // Edit mode: selected object controls
-                if (selectedObject >= 0 &&
-                    selectedObject < static_cast<int>(objects.size())) {
+                if (key->code == sf::Keyboard::Key::N) {
+                    createObject();
+                }
 
+                if (key->code == sf::Keyboard::Key::F5) {
+                    saveScene();
+                }
+
+                if (key->code == sf::Keyboard::Key::F9) {
+                    loadScene();
+                }
+
+                if (selectedObject >= 0) {
                     GameObject& object = objects[selectedObject];
                     sf::Vector2f size = object.getSize();
 
-                    // Change Z-layer
                     if (key->code == sf::Keyboard::Key::Q) {
                         object.setLayer(object.getLayer() - 1);
                     }
@@ -276,104 +352,46 @@ int main() {
                         object.setLayer(object.getLayer() + 1);
                     }
 
-                    // Decrease width
                     if (key->code == sf::Keyboard::Key::LBracket) {
                         size.x = std::max(20.f, size.x - 10.f);
                         object.setSize(size);
                     }
 
-                    // Increase width
                     if (key->code == sf::Keyboard::Key::RBracket) {
                         size.x += 10.f;
                         object.setSize(size);
                     }
 
-                    // Decrease height
                     if (key->code == sf::Keyboard::Key::Hyphen) {
                         size.y = std::max(20.f, size.y - 10.f);
                         object.setSize(size);
                     }
 
-                    // Increase height
                     if (key->code == sf::Keyboard::Key::Equal) {
                         size.y += 10.f;
                         object.setSize(size);
                     }
-                }
 
-                // Create object
-                if (key->code == sf::Keyboard::Key::N) {
-                    sf::Vector2f mousePosition =
-                        window.mapPixelToCoords(
-                            sf::Mouse::getPosition(window)
-                        );
-
-                    if (snapToGrid) {
-                        mousePosition =
-                            snapPosition(mousePosition, gridSize);
-                    }
-
-                    sf::Color colors[] = {
-                        sf::Color::Green,
-                        sf::Color::Blue,
-                        sf::Color::Magenta,
-                        sf::Color::Cyan,
-                        sf::Color::Yellow,
-                        sf::Color::Red
-                    };
-
-                    sf::Color color = colors[objectCounter % 6];
-                    objectCounter++;
-
-                    for (auto& object : objects) {
-                        object.setSelected(false);
-                    }
-
-                    objects.emplace_back(
-                        mousePosition,
-                        sf::Vector2f{80.f, 80.f},
-                        color,
-                        5
-                    );
-
-                    selectedObject =
-                        static_cast<int>(objects.size()) - 1;
-
-                    objects[selectedObject].setSelected(true);
-                }
-
-                // Delete object
-                if ((key->code == sf::Keyboard::Key::Delete ||
-                     key->code == sf::Keyboard::Key::Backspace) &&
-                    selectedObject >= 0) {
-
-                    objects.erase(objects.begin() + selectedObject);
-
-                    selectedObject = -1;
-                    dragging = false;
-                }
-
-                // Save scene
-                if (key->code == sf::Keyboard::Key::F5) {
-                    scene.save(objects, "scenes/example.scene");
-                }
-
-                // Load scene
-                if (key->code == sf::Keyboard::Key::F9) {
-                    if (scene.load(objects, "scenes/example.scene")) {
-                        selectedObject = -1;
-                        dragging = false;
+                    if (key->code == sf::Keyboard::Key::Delete ||
+                        key->code == sf::Keyboard::Key::Backspace) {
+                        deleteObject();
                     }
                 }
 
                 updateRenderOrder();
             }
 
+            // Don't edit objects while playing
             if (playMode) {
                 continue;
             }
 
-            // Mouse selection
+            // Don't interact with scene through ImGui windows
+            if (ImGui::GetIO().WantCaptureMouse) {
+                continue;
+            }
+
+            // Select objects with mouse
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseButtonPressed>()) {
 
@@ -381,12 +399,8 @@ int main() {
                     sf::Vector2f mousePosition =
                         window.mapPixelToCoords(mouse->position);
 
-                    for (auto& object : objects) {
-                        object.setSelected(false);
-                    }
-
-                    selectedObject = -1;
-                    dragging = false;
+                    updateRenderOrder();
+                    selectObject(-1);
 
                     for (auto it = renderOrder.rbegin();
                          it != renderOrder.rend(); ++it) {
@@ -396,10 +410,7 @@ int main() {
                         if (objects[index].getBounds()
                                 .contains(mousePosition)) {
 
-                            selectedObject =
-                                static_cast<int>(index);
-
-                            objects[index].setSelected(true);
+                            selectObject(static_cast<int>(index));
 
                             dragOffset =
                                 mousePosition -
@@ -412,7 +423,6 @@ int main() {
                 }
             }
 
-            // Mouse release
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseButtonReleased>()) {
 
@@ -421,7 +431,6 @@ int main() {
                 }
             }
 
-            // Mouse dragging
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseMoved>()) {
 
@@ -442,18 +451,199 @@ int main() {
             }
         }
 
-        // Run physics only in Play Mode
+        // Update ImGui
+        ImGui::SFML::Update(window, deltaClock.restart());
+
+        // -----------------------------
+        // EDITOR CONTROLS PANEL
+        // -----------------------------
+        ImGui::Begin("Editor Controls");
+
+        ImGui::Text("Real Engine Research");
+        ImGui::Separator();
+
+        ImGui::Text(
+            "Current Mode: %s",
+            playMode ? "PLAY" : "EDIT"
+        );
+
+        if (ImGui::Button(playMode ? "Stop Playing" : "Play Scene")) {
+            toggleMode();
+        }
+
+        ImGui::Separator();
+
+        if (!playMode) {
+            ImGui::Checkbox("Show Grid", &showGrid);
+            ImGui::Checkbox("Snap to Grid", &snapToGrid);
+
+            if (ImGui::Button("Save Scene")) {
+                saveScene();
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Load Scene")) {
+                loadScene();
+            }
+
+            if (ImGui::Button("Create Object")) {
+                createObject();
+            }
+
+            ImGui::Text("Objects: %d", static_cast<int>(objects.size()));
+        } else {
+            if (ImGui::Button("Reset Player")) {
+                resetPlayer();
+            }
+
+            ImGui::Text("A/D: Move");
+            ImGui::Text("Space: Jump");
+        }
+
+        ImGui::End();
+
+        // -----------------------------
+        // SCENE HIERARCHY PANEL
+        // -----------------------------
+        if (!playMode) {
+            ImGui::Begin("Scene Hierarchy");
+
+            ImGui::Text("Scene Objects");
+            ImGui::Separator();
+
+            for (int i = 0; i < static_cast<int>(objects.size()); i++) {
+                std::string name =
+                    "GameObject " + std::to_string(i);
+
+                bool selected = (selectedObject == i);
+
+                if (ImGui::Selectable(name.c_str(), selected)) {
+                    selectObject(i);
+                }
+            }
+
+            ImGui::Separator();
+
+            if (ImGui::Button("Add Object")) {
+                createObject();
+            }
+
+            if (selectedObject >= 0) {
+                if (ImGui::Button("Delete Selected")) {
+                    deleteObject();
+                }
+            }
+
+            ImGui::End();
+        }
+
+        // -----------------------------
+        // INSPECTOR PANEL
+        // -----------------------------
+        if (!playMode) {
+            ImGui::Begin("Inspector");
+
+            if (selectedObject >= 0 &&
+                selectedObject < static_cast<int>(objects.size())) {
+
+                GameObject& object = objects[selectedObject];
+
+                ImGui::Text(
+                    "Selected: GameObject %d",
+                    selectedObject
+                );
+
+                ImGui::Separator();
+
+                // Position
+                sf::Vector2f position = object.getPosition();
+
+                float pos[2] = {
+                    position.x,
+                    position.y
+                };
+
+                if (ImGui::DragFloat2("Position", pos, 1.f)) {
+                    object.setPosition({pos[0], pos[1]});
+                }
+
+                // Size
+                sf::Vector2f size = object.getSize();
+
+                float dimensions[2] = {
+                    size.x,
+                    size.y
+                };
+
+                if (ImGui::DragFloat2("Size", dimensions, 1.f)) {
+                    dimensions[0] = std::max(20.f, dimensions[0]);
+                    dimensions[1] = std::max(20.f, dimensions[1]);
+
+                    object.setSize({
+                        dimensions[0],
+                        dimensions[1]
+                    });
+                }
+
+                // Z-layer
+                int layer = object.getLayer();
+
+                if (ImGui::InputInt("Z-Layer", &layer)) {
+                    object.setLayer(layer);
+                }
+
+                // Color
+                sf::Color color = object.getColor();
+
+                float rgba[4] = {
+                    color.r / 255.f,
+                    color.g / 255.f,
+                    color.b / 255.f,
+                    color.a / 255.f
+                };
+
+                if (ImGui::ColorEdit4("Color", rgba)) {
+                    object.setColor(
+                        sf::Color(
+                            static_cast<std::uint8_t>(rgba[0] * 255.f),
+                            static_cast<std::uint8_t>(rgba[1] * 255.f),
+                            static_cast<std::uint8_t>(rgba[2] * 255.f),
+                            static_cast<std::uint8_t>(rgba[3] * 255.f)
+                        )
+                    );
+                }
+
+                ImGui::Separator();
+
+                if (ImGui::Button("Delete Object")) {
+                    deleteObject();
+                }
+            } else {
+                ImGui::Text("No object selected.");
+                ImGui::Text("Select an object in the scene");
+                ImGui::Text("or Scene Hierarchy panel.");
+            }
+
+            ImGui::End();
+        }
+
+        // -----------------------------
+        // PLAYER PHYSICS
+        // -----------------------------
         if (playMode) {
             velocity.x = 0.f;
 
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
-                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
-                velocity.x -= moveSpeed;
-            }
+            if (!ImGui::GetIO().WantCaptureKeyboard) {
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
+                    sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
+                    velocity.x -= moveSpeed;
+                }
 
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
-                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
-                velocity.x += moveSpeed;
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
+                    sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
+                    velocity.x += moveSpeed;
+                }
             }
 
             sf::Vector2f oldPosition = player.getPosition();
@@ -466,6 +656,7 @@ int main() {
                 if (checkCollision(
                         player.getGlobalBounds(),
                         object.getBounds())) {
+
                     horizontalCollision = true;
                     break;
                 }
@@ -478,12 +669,16 @@ int main() {
             physics.update(player, velocity, objects, deltaTime);
 
             sf::Vector2f position = player.getPosition();
-            position.x = std::clamp(position.x, 0.f, 760.f);
+
+            position.x = std::clamp(position.x, 0.f, 960.f);
+
             player.setPosition(position);
         }
 
+        // -----------------------------
+        // RENDER EVERYTHING
+        // -----------------------------
         updateRenderOrder();
-        window.setTitle(updateWindowTitle());
 
         window.clear(sf::Color(30, 30, 40));
 
@@ -499,8 +694,14 @@ int main() {
             window.draw(player);
         }
 
+        // Draw ImGui on top of SFML
+        ImGui::SFML::Render(window);
+
         window.display();
     }
+
+    // Clean up ImGui
+    ImGui::SFML::Shutdown();
 
     return 0;
 }
