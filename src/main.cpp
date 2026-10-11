@@ -11,17 +11,14 @@
 #include <string>
 #include <vector>
 
-// Check whether two rectangles overlap
 bool checkCollision(const sf::FloatRect& a, const sf::FloatRect& b) {
     return a.findIntersection(b).has_value();
 }
 
-// Round a coordinate to the nearest grid line
 float snapValue(float value, float gridSize) {
     return std::round(value / gridSize) * gridSize;
 }
 
-// Snap a position to the grid
 sf::Vector2f snapPosition(sf::Vector2f position, float gridSize) {
     return {
         snapValue(position.x, gridSize),
@@ -30,7 +27,6 @@ sf::Vector2f snapPosition(sf::Vector2f position, float gridSize) {
 }
 
 int main() {
-    // Create the application window
     sf::RenderWindow window(
         sf::VideoMode({800, 600}),
         "Real Engine Research - Scene Editor"
@@ -38,18 +34,14 @@ int main() {
 
     window.setFramerateLimit(60);
 
-    // Editor mode
     bool playMode = false;
 
-    // Grid settings
     const float gridSize = 40.f;
     bool showGrid = true;
     bool snapToGrid = false;
 
-    // Create grid lines
     sf::VertexArray grid(sf::PrimitiveType::Lines);
 
-    // Vertical grid lines
     for (float x = 0.f; x <= 800.f; x += gridSize) {
         sf::Vertex top;
         top.position = {x, 0.f};
@@ -63,7 +55,6 @@ int main() {
         grid.append(bottom);
     }
 
-    // Horizontal grid lines
     for (float y = 0.f; y <= 600.f; y += gridSize) {
         sf::Vertex left;
         left.position = {0.f, y};
@@ -77,14 +68,12 @@ int main() {
         grid.append(right);
     }
 
-    // Create player
     sf::RectangleShape player({40.f, 40.f});
     player.setFillColor(sf::Color::Green);
     player.setPosition({50.f, 50.f});
 
     const sf::Vector2f playerStart{50.f, 50.f};
 
-    // Physics settings
     const float moveSpeed = 250.f;
     const float jumpStrength = -500.f;
 
@@ -92,60 +81,43 @@ int main() {
 
     Physics physics;
     sf::Clock clock;
-
-    // Scene manager
     Scene scene;
 
-    // Store game objects
     std::vector<GameObject> objects;
 
-    // Red platform
     objects.emplace_back(
         sf::Vector2f{200.f, 150.f},
         sf::Vector2f{200.f, 40.f},
-        sf::Color::Red,
-        1
+        sf::Color::Red, 1
     );
 
-    // Blue platform
     objects.emplace_back(
         sf::Vector2f{450.f, 250.f},
         sf::Vector2f{40.f, 200.f},
-        sf::Color::Blue,
-        2
+        sf::Color::Blue, 2
     );
 
-    // Magenta platform
     objects.emplace_back(
         sf::Vector2f{100.f, 450.f},
         sf::Vector2f{200.f, 40.f},
-        sf::Color::Magenta,
-        3
+        sf::Color::Magenta, 3
     );
 
-    // Cyan rectangle
     objects.emplace_back(
         sf::Vector2f{300.f, 300.f},
         sf::Vector2f{140.f, 140.f},
-        sf::Color::Cyan,
-        0
+        sf::Color::Cyan, 0
     );
 
-    // Yellow rectangle
     objects.emplace_back(
         sf::Vector2f{350.f, 350.f},
         sf::Vector2f{140.f, 140.f},
-        sf::Color::Yellow,
-        4
+        sf::Color::Yellow, 4
     );
 
-    // Backup of scene before entering Play Mode
     std::vector<GameObject> sceneBackup;
-
-    // Rendering order
     std::vector<std::size_t> renderOrder;
 
-    // Object selection
     int selectedObject = -1;
     bool dragging = false;
 
@@ -153,33 +125,10 @@ int main() {
 
     int objectCounter = 0;
 
-    // Update the window title
-    auto updateWindowTitle = [&]() {
-        std::string title = "Real Engine | Mode: ";
-
-        title += playMode ? "PLAY" : "EDIT";
-
-        title += " | Grid: ";
-        title += (showGrid && !playMode) ? "ON" : "OFF";
-
-        title += " | Snap: ";
-        title += snapToGrid ? "ON" : "OFF";
-
-        title += " | Gravity: ";
-        title += physics.isGravityEnabled() ? "ON" : "OFF";
-
-        return title;
-    };
-
-    // Update the order in which objects are drawn
     auto updateRenderOrder = [&]() {
         renderOrder.resize(objects.size());
 
-        std::iota(
-            renderOrder.begin(),
-            renderOrder.end(),
-            0
-        );
+        std::iota(renderOrder.begin(), renderOrder.end(), 0);
 
         std::stable_sort(
             renderOrder.begin(),
@@ -191,20 +140,50 @@ int main() {
         );
     };
 
-    // Reset player and physics state
+    auto updateWindowTitle = [&]() {
+        std::string title = "Real Engine | ";
+
+        title += playMode ? "PLAY" : "EDIT";
+
+        if (!playMode && selectedObject >= 0 &&
+            selectedObject < static_cast<int>(objects.size())) {
+
+            const GameObject& object = objects[selectedObject];
+
+            sf::Vector2f position = object.getPosition();
+            sf::Vector2f size = object.getSize();
+
+            title += " | Object " + std::to_string(selectedObject);
+            title += " | Pos: (" +
+                     std::to_string(static_cast<int>(position.x)) +
+                     ", " +
+                     std::to_string(static_cast<int>(position.y)) + ")";
+
+            title += " | Size: (" +
+                     std::to_string(static_cast<int>(size.x)) +
+                     ", " +
+                     std::to_string(static_cast<int>(size.y)) + ")";
+
+            title += " | Layer: " +
+                     std::to_string(object.getLayer());
+        }
+
+        title += " | Snap: ";
+        title += snapToGrid ? "ON" : "OFF";
+
+        return title;
+    };
+
     auto resetPlayer = [&]() {
         player.setPosition(playerStart);
         velocity = {0.f, 0.f};
         physics.reset();
     };
 
-    // Switch between Edit and Play modes
     auto toggleMode = [&]() {
         if (!playMode) {
-            // Enter Play Mode
             sceneBackup = objects;
 
-            // Remove editor selection
             for (auto& object : objects) {
                 object.setSelected(false);
             }
@@ -213,124 +192,117 @@ int main() {
             dragging = false;
 
             resetPlayer();
-
             physics.setGravityEnabled(true);
+
             playMode = true;
 
             std::cout << "Entered PLAY mode" << std::endl;
         } else {
-            // Return to Edit Mode
             objects = sceneBackup;
 
             selectedObject = -1;
             dragging = false;
 
             resetPlayer();
-
             physics.setGravityEnabled(false);
+
             playMode = false;
 
             std::cout << "Returned to EDIT mode" << std::endl;
-            std::cout << "Scene restored" << std::endl;
         }
 
         updateRenderOrder();
-        window.setTitle(updateWindowTitle());
     };
 
     updateRenderOrder();
-    window.setTitle(updateWindowTitle());
 
-    // Main application loop
     while (window.isOpen()) {
         float deltaTime = clock.restart().asSeconds();
         deltaTime = std::min(deltaTime, 0.033f);
 
-        // Handle events
         while (const auto event = window.pollEvent()) {
-
-            // Close window
             if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
 
-            // Keyboard input
             if (const auto* key =
                     event->getIf<sf::Event::KeyPressed>()) {
 
-                // Exit
                 if (key->code == sf::Keyboard::Key::Escape) {
                     window.close();
                 }
 
-                // Switch between Edit and Play modes
                 if (key->code == sf::Keyboard::Key::Tab) {
                     toggleMode();
                     continue;
                 }
 
-                // Play Mode controls
                 if (playMode) {
-
-                    // Reset player
                     if (key->code == sf::Keyboard::Key::R) {
                         resetPlayer();
                     }
 
-                    // Jump
                     if (key->code == sf::Keyboard::Key::Space &&
                         physics.isGrounded()) {
-
                         velocity.y = jumpStrength;
                     }
 
-                    // Skip editor-only keyboard controls
                     continue;
                 }
 
-                // EDIT MODE CONTROLS
-
-                // Toggle grid
+                // Edit mode: grid visibility
                 if (key->code == sf::Keyboard::Key::H) {
                     showGrid = !showGrid;
-
-                    std::cout << "Grid: "
-                              << (showGrid ? "ON" : "OFF")
-                              << std::endl;
                 }
 
-                // Toggle snapping
+                // Edit mode: grid snapping
                 if (key->code == sf::Keyboard::Key::T) {
                     snapToGrid = !snapToGrid;
-
-                    std::cout << "Snapping: "
-                              << (snapToGrid ? "ON" : "OFF")
-                              << std::endl;
                 }
 
-                // Lower selected object's layer
-                if (key->code == sf::Keyboard::Key::Q &&
-                    selectedObject >= 0) {
+                // Edit mode: selected object controls
+                if (selectedObject >= 0 &&
+                    selectedObject < static_cast<int>(objects.size())) {
 
                     GameObject& object = objects[selectedObject];
-                    object.setLayer(object.getLayer() - 1);
+                    sf::Vector2f size = object.getSize();
 
-                    updateRenderOrder();
+                    // Change Z-layer
+                    if (key->code == sf::Keyboard::Key::Q) {
+                        object.setLayer(object.getLayer() - 1);
+                    }
+
+                    if (key->code == sf::Keyboard::Key::E) {
+                        object.setLayer(object.getLayer() + 1);
+                    }
+
+                    // Decrease width
+                    if (key->code == sf::Keyboard::Key::LBracket) {
+                        size.x = std::max(20.f, size.x - 10.f);
+                        object.setSize(size);
+                    }
+
+                    // Increase width
+                    if (key->code == sf::Keyboard::Key::RBracket) {
+                        size.x += 10.f;
+                        object.setSize(size);
+                    }
+
+                    // Decrease height
+                    if (key->code == sf::Keyboard::Key::Hyphen) {
+                        size.y = std::max(20.f, size.y - 10.f);
+                        object.setSize(size);
+                    }
+
+                    // Increase height
+                    if (key->code == sf::Keyboard::Key::Equal) {
+                        size.y += 10.f;
+                        object.setSize(size);
+                    }
                 }
 
-                // Raise selected object's layer
-                if (key->code == sf::Keyboard::Key::E &&
-                    selectedObject >= 0) {
-
-                    GameObject& object = objects[selectedObject];
-                    object.setLayer(object.getLayer() + 1);
-
-                    updateRenderOrder();
-                }
-
-                // Create a new object
+                // Create object
                 if (key->code == sf::Keyboard::Key::N) {
-
                     sf::Vector2f mousePosition =
                         window.mapPixelToCoords(
                             sf::Mouse::getPosition(window)
@@ -368,27 +340,17 @@ int main() {
                         static_cast<int>(objects.size()) - 1;
 
                     objects[selectedObject].setSelected(true);
-
-                    updateRenderOrder();
-
-                    std::cout << "Object created" << std::endl;
                 }
 
-                // Delete selected object
+                // Delete object
                 if ((key->code == sf::Keyboard::Key::Delete ||
                      key->code == sf::Keyboard::Key::Backspace) &&
                     selectedObject >= 0) {
 
-                    objects.erase(
-                        objects.begin() + selectedObject
-                    );
+                    objects.erase(objects.begin() + selectedObject);
 
                     selectedObject = -1;
                     dragging = false;
-
-                    updateRenderOrder();
-
-                    std::cout << "Object deleted" << std::endl;
                 }
 
                 // Save scene
@@ -401,23 +363,21 @@ int main() {
                     if (scene.load(objects, "scenes/example.scene")) {
                         selectedObject = -1;
                         dragging = false;
-
-                        updateRenderOrder();
                     }
                 }
+
+                updateRenderOrder();
             }
 
-            // Mouse input is only active in Edit Mode
             if (playMode) {
                 continue;
             }
 
-            // Select objects
+            // Mouse selection
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseButtonPressed>()) {
 
                 if (mouse->button == sf::Mouse::Button::Left) {
-
                     sf::Vector2f mousePosition =
                         window.mapPixelToCoords(mouse->position);
 
@@ -428,7 +388,6 @@ int main() {
                     selectedObject = -1;
                     dragging = false;
 
-                    // Select topmost object
                     for (auto it = renderOrder.rbegin();
                          it != renderOrder.rend(); ++it) {
 
@@ -453,7 +412,7 @@ int main() {
                 }
             }
 
-            // Stop dragging
+            // Mouse release
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseButtonReleased>()) {
 
@@ -462,12 +421,11 @@ int main() {
                 }
             }
 
-            // Drag selected object
+            // Mouse dragging
             if (const auto* mouse =
                     event->getIf<sf::Event::MouseMoved>()) {
 
                 if (dragging && selectedObject >= 0) {
-
                     sf::Vector2f mousePosition =
                         window.mapPixelToCoords(mouse->position);
 
@@ -484,26 +442,20 @@ int main() {
             }
         }
 
-        // Only run player movement and physics in Play Mode
+        // Run physics only in Play Mode
         if (playMode) {
-
             velocity.x = 0.f;
 
-            // Move left
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
                 sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
-
                 velocity.x -= moveSpeed;
             }
 
-            // Move right
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
                 sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
-
                 velocity.x += moveSpeed;
             }
 
-            // Horizontal movement
             sf::Vector2f oldPosition = player.getPosition();
 
             player.move({velocity.x * deltaTime, 0.f});
@@ -514,7 +466,6 @@ int main() {
                 if (checkCollision(
                         player.getGlobalBounds(),
                         object.getBounds())) {
-
                     horizontalCollision = true;
                     break;
                 }
@@ -524,42 +475,26 @@ int main() {
                 player.setPosition(oldPosition);
             }
 
-            // Gravity and vertical collisions
-            physics.update(
-                player,
-                velocity,
-                objects,
-                deltaTime
-            );
+            physics.update(player, velocity, objects, deltaTime);
 
-            // Keep player inside window horizontally
             sf::Vector2f position = player.getPosition();
-
             position.x = std::clamp(position.x, 0.f, 760.f);
-
             player.setPosition(position);
         }
 
-        // Update rendering order
         updateRenderOrder();
-
-        // Update title
         window.setTitle(updateWindowTitle());
 
-        // Clear screen
         window.clear(sf::Color(30, 30, 40));
 
-        // Grid is visible only in Edit Mode
         if (!playMode && showGrid) {
             window.draw(grid);
         }
 
-        // Draw scene objects
         for (std::size_t index : renderOrder) {
             objects[index].draw(window);
         }
 
-        // Draw player only in Play Mode
         if (playMode) {
             window.draw(player);
         }

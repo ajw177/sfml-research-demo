@@ -20,6 +20,10 @@ sf::Vector2f GameObject::getPosition() const {
     return shape.getPosition();
 }
 
+void GameObject::setSize(sf::Vector2f size) {
+    shape.setSize(size);
+}
+
 sf::Vector2f GameObject::getSize() const {
     return shape.getSize();
 }

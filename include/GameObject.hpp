@@ -12,6 +12,7 @@ public:
     void setPosition(sf::Vector2f position);
     sf::Vector2f getPosition() const;
 
+    void setSize(sf::Vector2f size);
     sf::Vector2f getSize() const;
 
     void setColor(sf::Color color);
