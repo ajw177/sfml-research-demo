@@ -1,0 +1,7 @@
+{
+    "name": "sfml-research-demo",
+    "version-string": "1.0.0",
+    "dependencies": [
+        "sfml"
+    ]
+}
