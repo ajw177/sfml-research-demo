@@ -1,29 +1,23 @@
-#include "GameObject.hpp"
+#pragma once
 
-GameObject::GameObject(sf::Vector2f position, sf::Vector2f size,
-                       sf::Color color, int layer) {
-    shape.setPosition(position);
-    shape.setSize(size);
-    shape.setFillColor(color);
-    zLayer = layer;
-}
+#include <SFML/Graphics.hpp>
 
-void GameObject::draw(sf::RenderWindow& window) const {
-    window.draw(shape);
-}
+class GameObject {
+public:
+    GameObject(sf::Vector2f position, sf::Vector2f size,
+               sf::Color color, int layer);
 
-void GameObject::setPosition(sf::Vector2f position) {
-    shape.setPosition(position);
-}
+    void draw(sf::RenderWindow& window) const;
 
-sf::Vector2f GameObject::getPosition() const {
-    return shape.getPosition();
-}
+    void setPosition(sf::Vector2f position);
+    sf::Vector2f getPosition() const;
 
-void GameObject::setLayer(int layer) {
-    zLayer = layer;
-}
+    sf::FloatRect getBounds() const;
 
-int GameObject::getLayer() const {
-    return zLayer;
-}
+    void setLayer(int layer);
+    int getLayer() const;
+
+private:
+    sf::RectangleShape shape;
+    int zLayer;
+};
