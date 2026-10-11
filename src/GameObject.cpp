@@ -43,3 +43,18 @@ void GameObject::setLayer(int layer) {
 int GameObject::getLayer() const {
     return zLayer;
 }
+
+void GameObject::setSelected(bool value) {
+    selected = value;
+
+    if (selected) {
+        shape.setOutlineThickness(3.f);
+        shape.setOutlineColor(sf::Color::White);
+    } else {
+        shape.setOutlineThickness(0.f);
+    }
+}
+
+bool GameObject::isSelected() const {
+    return selected;
+}

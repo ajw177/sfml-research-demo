@@ -8,83 +8,67 @@
 #include <numeric>
 #include <vector>
 
-// Check whether two rectangles overlap
 bool checkCollision(const sf::FloatRect& a, const sf::FloatRect& b) {
     return a.findIntersection(b).has_value();
 }
 
 int main() {
-    // Create the application window
     sf::RenderWindow window(
         sf::VideoMode({800, 600}),
-        "Real Engine Research - Scene Save and Load"
+        "Real Engine Research - Scene Editor"
     );
 
     window.setFramerateLimit(60);
 
-    // Create the player
     sf::RectangleShape player({40.f, 40.f});
     player.setFillColor(sf::Color::Green);
     player.setPosition({50.f, 50.f});
 
     const float speed = 5.f;
 
-    // Create our scene manager
     Scene scene;
-
-    // Store game objects
     std::vector<GameObject> objects;
 
-    // Red horizontal obstacle - Layer 1
     objects.emplace_back(
         sf::Vector2f{200.f, 150.f},
         sf::Vector2f{200.f, 40.f},
-        sf::Color::Red,
-        1
+        sf::Color::Red, 1
     );
 
-    // Blue vertical obstacle - Layer 2
     objects.emplace_back(
         sf::Vector2f{450.f, 250.f},
         sf::Vector2f{40.f, 200.f},
-        sf::Color::Blue,
-        2
+        sf::Color::Blue, 2
     );
 
-    // Magenta horizontal obstacle - Layer 3
     objects.emplace_back(
         sf::Vector2f{100.f, 450.f},
         sf::Vector2f{200.f, 40.f},
-        sf::Color::Magenta,
-        3
+        sf::Color::Magenta, 3
     );
 
-    // Cyan rectangle - Layer 0
     objects.emplace_back(
         sf::Vector2f{300.f, 300.f},
         sf::Vector2f{140.f, 140.f},
-        sf::Color::Cyan,
-        0
+        sf::Color::Cyan, 0
     );
 
-    // Yellow rectangle - Layer 4
     objects.emplace_back(
         sf::Vector2f{350.f, 350.f},
         sf::Vector2f{140.f, 140.f},
-        sf::Color::Yellow,
-        4
+        sf::Color::Yellow, 4
     );
 
-    // Select the yellow object initially
-    std::size_t selectedObject = 4;
-
-    // Store drawing order separately
     std::vector<std::size_t> renderOrder;
 
-    // Main application loop
+    // -1 means no object is selected
+    int selectedObject = -1;
+
+    bool dragging = false;
+    sf::Vector2f dragOffset{0.f, 0.f};
+
     while (window.isOpen()) {
 
-        // Handle events
         while (const auto event = window.pollEvent()) {
 
             if (event->is<sf::Event::Closed>()) {
@@ -94,69 +78,110 @@ int main() {
             if (const auto* key =
                     event->getIf<sf::Event::KeyPressed>()) {
 
-                // Close application
                 if (key->code == sf::Keyboard::Key::Escape) {
                     window.close();
                 }
 
-                // Reset player
                 if (key->code == sf::Keyboard::Key::R) {
                     player.setPosition({50.f, 50.f});
                 }
 
-                // Lower selected object's Z-layer
                 if (key->code == sf::Keyboard::Key::Q &&
-                    selectedObject < objects.size()) {
+                    selectedObject >= 0) {
 
-                    int currentLayer =
-                        objects[selectedObject].getLayer();
-
-                    objects[selectedObject].setLayer(
-                        currentLayer - 1
-                    );
+                    GameObject& object = objects[selectedObject];
+                    object.setLayer(object.getLayer() - 1);
                 }
 
-                // Raise selected object's Z-layer
                 if (key->code == sf::Keyboard::Key::E &&
-                    selectedObject < objects.size()) {
+                    selectedObject >= 0) {
 
-                    int currentLayer =
-                        objects[selectedObject].getLayer();
-
-                    objects[selectedObject].setLayer(
-                        currentLayer + 1
-                    );
+                    GameObject& object = objects[selectedObject];
+                    object.setLayer(object.getLayer() + 1);
                 }
 
-                // Save the scene
                 if (key->code == sf::Keyboard::Key::F5) {
                     scene.save(objects, "scenes/example.scene");
                 }
 
-                // Load the scene
                 if (key->code == sf::Keyboard::Key::F9) {
-
                     if (scene.load(objects, "scenes/example.scene")) {
-
-                        // Reset selection after loading
-                        if (objects.empty()) {
-                            selectedObject = 0;
-                        } else {
-                            selectedObject = objects.size() - 1;
-                        }
-
-                        std::cout << "Scene restored!"
-                                  << std::endl;
+                        selectedObject = -1;
+                        dragging = false;
                     }
+                }
+            }
+
+            // Select an object when the left mouse button is pressed
+            if (const auto* mouse =
+                    event->getIf<sf::Event::MouseButtonPressed>()) {
+
+                if (mouse->button == sf::Mouse::Button::Left) {
+
+                    sf::Vector2f mousePosition =
+                        window.mapPixelToCoords(mouse->position);
+
+                    // Clear previous selection
+                    for (auto& object : objects) {
+                        object.setSelected(false);
+                    }
+
+                    selectedObject = -1;
+                    dragging = false;
+
+                    // Check topmost objects first
+                    for (auto it = renderOrder.rbegin();
+                         it != renderOrder.rend(); ++it) {
+
+                        std::size_t index = *it;
+
+                        if (objects[index].getBounds()
+                                .contains(mousePosition)) {
+
+                            selectedObject = static_cast<int>(index);
+                            objects[index].setSelected(true);
+
+                            dragOffset =
+                                mousePosition -
+                                objects[index].getPosition();
+
+                            dragging = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Stop dragging when mouse is released
+            if (const auto* mouse =
+                    event->getIf<sf::Event::MouseButtonReleased>()) {
+
+                if (mouse->button == sf::Mouse::Button::Left) {
+                    dragging = false;
+                }
+            }
+
+            // Move selected object with the mouse
+            if (const auto* mouse =
+                    event->getIf<sf::Event::MouseMoved>()) {
+
+                if (dragging && selectedObject >= 0) {
+
+                    sf::Vector2f mousePosition =
+                        window.mapPixelToCoords(mouse->position);
+
+                    sf::Vector2f newPosition =
+                        mousePosition - dragOffset;
+
+                    objects[selectedObject].setPosition(newPosition);
                 }
             }
         }
 
-        // Save player's previous position
+        // Player movement
         sf::Vector2f oldPosition = player.getPosition();
         sf::Vector2f position = oldPosition;
 
-        // Keyboard movement
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
             sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up)) {
             position.y -= speed;
@@ -177,13 +202,11 @@ int main() {
             position.x += speed;
         }
 
-        // Keep player inside window
         position.x = std::clamp(position.x, 0.f, 760.f);
         position.y = std::clamp(position.y, 0.f, 560.f);
 
         player.setPosition(position);
 
-        // Collision detection
         bool collided = false;
 
         for (const auto& object : objects) {
@@ -203,17 +226,11 @@ int main() {
             player.setFillColor(sf::Color::Green);
         }
 
-        // Resize drawing order to match the current scene
+        // Sort rendering order
         renderOrder.resize(objects.size());
 
-        // Prepare drawing order
-        std::iota(
-            renderOrder.begin(),
-            renderOrder.end(),
-            0
-        );
+        std::iota(renderOrder.begin(), renderOrder.end(), 0);
 
-        // Sort objects by Z-layer
         std::stable_sort(
             renderOrder.begin(),
             renderOrder.end(),
@@ -223,7 +240,6 @@ int main() {
             }
         );
 
-        // Render
         window.clear(sf::Color(30, 30, 40));
 
         for (std::size_t index : renderOrder) {

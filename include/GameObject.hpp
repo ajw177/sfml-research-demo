@@ -22,7 +22,11 @@ public:
     void setLayer(int layer);
     int getLayer() const;
 
+    void setSelected(bool selected);
+    bool isSelected() const;
+
 private:
     sf::RectangleShape shape;
     int zLayer;
+    bool selected = false;
 };
