@@ -7,7 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(SFML 3 COMPONENTS Graphics Window System REQUIRED)
 
-add_executable(sfml-research-demo src/main.cpp)
+add_executable(sfml-research-demo
+    src/main.cpp
+    src/GameObject.cpp
+)
+
+target_include_directories(sfml-research-demo PRIVATE include)
 
 target_link_libraries(sfml-research-demo PRIVATE
     SFML::Graphics
