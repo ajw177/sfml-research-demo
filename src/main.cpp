@@ -2,6 +2,7 @@
 
 #include "GameObject.hpp"
 #include "Scene.hpp"
+#include "Physics.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -15,18 +16,29 @@ bool checkCollision(const sf::FloatRect& a, const sf::FloatRect& b) {
 int main() {
     sf::RenderWindow window(
         sf::VideoMode({800, 600}),
-        "Real Engine Research - Interactive Scene Editor"
+        "Real Engine Research - Physics Demo"
     );
 
     window.setFramerateLimit(60);
 
+    // Player
     sf::RectangleShape player({40.f, 40.f});
     player.setFillColor(sf::Color::Green);
     player.setPosition({50.f, 50.f});
 
-    const float speed = 5.f;
+    // Movement and physics
+    const float moveSpeed = 250.f;
+    const float jumpStrength = -500.f;
 
+    sf::Vector2f velocity{0.f, 0.f};
+
+    Physics physics;
+    sf::Clock clock;
+
+    // Scene manager
     Scene scene;
+
+    // Game objects
     std::vector<GameObject> objects;
 
     objects.emplace_back(
@@ -66,11 +78,17 @@ int main() {
 
     sf::Vector2f dragOffset{0.f, 0.f};
 
-    // Used to give newly created objects different colors
     int objectCounter = 0;
 
     while (window.isOpen()) {
 
+        // Delta time
+        float deltaTime = clock.restart().asSeconds();
+
+        // Prevent unusually large physics steps
+        deltaTime = std::min(deltaTime, 0.033f);
+
+        // Events
         while (const auto event = window.pollEvent()) {
 
             if (event->is<sf::Event::Closed>()) {
@@ -84,11 +102,36 @@ int main() {
                     window.close();
                 }
 
+                // Reset player
                 if (key->code == sf::Keyboard::Key::R) {
                     player.setPosition({50.f, 50.f});
+                    velocity = {0.f, 0.f};
+                    physics.reset();
                 }
 
-                // Lower selected object's layer
+                // Toggle gravity
+                if (key->code == sf::Keyboard::Key::G) {
+
+                    bool enabled = !physics.isGravityEnabled();
+
+                    physics.setGravityEnabled(enabled);
+
+                    velocity = {0.f, 0.f};
+
+                    std::cout << "Gravity: "
+                              << (enabled ? "ON" : "OFF")
+                              << std::endl;
+                }
+
+                // Jump
+                if (key->code == sf::Keyboard::Key::Space &&
+                    physics.isGravityEnabled() &&
+                    physics.isGrounded()) {
+
+                    velocity.y = jumpStrength;
+                }
+
+                // Change Z-layer
                 if (key->code == sf::Keyboard::Key::Q &&
                     selectedObject >= 0) {
 
@@ -96,7 +139,6 @@ int main() {
                     object.setLayer(object.getLayer() - 1);
                 }
 
-                // Raise selected object's layer
                 if (key->code == sf::Keyboard::Key::E &&
                     selectedObject >= 0) {
 
@@ -104,7 +146,7 @@ int main() {
                     object.setLayer(object.getLayer() + 1);
                 }
 
-                // Create a new object
+                // Create object
                 if (key->code == sf::Keyboard::Key::N) {
 
                     sf::Vector2f mousePosition =
@@ -124,7 +166,6 @@ int main() {
                     sf::Color color = colors[objectCounter % 6];
                     objectCounter++;
 
-                    // Deselect previous object
                     for (auto& object : objects) {
                         object.setSelected(false);
                     }
@@ -140,12 +181,9 @@ int main() {
                         static_cast<int>(objects.size()) - 1;
 
                     objects[selectedObject].setSelected(true);
-
-                    std::cout << "Created new object. Total: "
-                              << objects.size() << std::endl;
                 }
 
-                // Delete selected object
+                // Delete object
                 if ((key->code == sf::Keyboard::Key::Delete ||
                      key->code == sf::Keyboard::Key::Backspace) &&
                     selectedObject >= 0) {
@@ -156,17 +194,14 @@ int main() {
 
                     selectedObject = -1;
                     dragging = false;
-
-                    std::cout << "Object deleted. Total: "
-                              << objects.size() << std::endl;
                 }
 
-                // Save scene
+                // Save
                 if (key->code == sf::Keyboard::Key::F5) {
                     scene.save(objects, "scenes/example.scene");
                 }
 
-                // Load scene
+                // Load
                 if (key->code == sf::Keyboard::Key::F9) {
 
                     if (scene.load(objects, "scenes/example.scene")) {
@@ -240,55 +275,89 @@ int main() {
             }
         }
 
-        // Player movement
-        sf::Vector2f oldPosition = player.getPosition();
-        sf::Vector2f position = oldPosition;
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
-            sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up)) {
-            position.y -= speed;
-        }
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
-            sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down)) {
-            position.y += speed;
-        }
+        // Horizontal player movement
+        velocity.x = 0.f;
 
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
             sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
-            position.x -= speed;
+            velocity.x -= moveSpeed;
         }
 
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
             sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
-            position.x += speed;
+            velocity.x += moveSpeed;
         }
 
-        position.x = std::clamp(position.x, 0.f, 760.f);
-        position.y = std::clamp(position.y, 0.f, 560.f);
+        // Free vertical movement when gravity is disabled
+        if (!physics.isGravityEnabled()) {
 
-        player.setPosition(position);
+            velocity.y = 0.f;
 
-        bool collided = false;
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up)) {
+                velocity.y -= moveSpeed;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
+                sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down)) {
+                velocity.y += moveSpeed;
+            }
+        }
+
+        // Move horizontally
+        sf::Vector2f oldPosition = player.getPosition();
+
+        player.move({velocity.x * deltaTime, 0.f});
+
+        // Horizontal collision detection
+        bool horizontalCollision = false;
 
         for (const auto& object : objects) {
             if (checkCollision(
                     player.getGlobalBounds(),
                     object.getBounds())) {
 
-                collided = true;
+                horizontalCollision = true;
                 break;
             }
         }
 
-        if (collided) {
+        if (horizontalCollision) {
             player.setPosition(oldPosition);
-            player.setFillColor(sf::Color::Yellow);
-        } else {
-            player.setFillColor(sf::Color::Green);
         }
 
-        // Sort rendering order
+        // Apply gravity and vertical collisions
+        if (physics.isGravityEnabled()) {
+            physics.update(player, velocity, objects, deltaTime);
+        } else {
+            // Free movement without gravity
+            sf::Vector2f beforeVertical = player.getPosition();
+
+            player.move({0.f, velocity.y * deltaTime});
+
+            for (const auto& object : objects) {
+                if (checkCollision(
+                        player.getGlobalBounds(),
+                        object.getBounds())) {
+
+                    player.setPosition(beforeVertical);
+                    break;
+                }
+            }
+        }
+
+        // Keep player inside window horizontally
+        sf::Vector2f position = player.getPosition();
+
+        position.x = std::clamp(position.x, 0.f, 760.f);
+
+        if (!physics.isGravityEnabled()) {
+            position.y = std::clamp(position.y, 0.f, 560.f);
+        }
+
+        player.setPosition(position);
+
+        // Rendering order
         renderOrder.resize(objects.size());
 
         std::iota(renderOrder.begin(), renderOrder.end(), 0);
@@ -302,6 +371,7 @@ int main() {
             }
         );
 
+        // Render
         window.clear(sf::Color(30, 30, 40));
 
         for (std::size_t index : renderOrder) {

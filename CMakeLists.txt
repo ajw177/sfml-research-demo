@@ -11,6 +11,7 @@ add_executable(sfml-research-demo
     src/main.cpp
     src/GameObject.cpp
     src/Scene.cpp
+    src/Physics.cpp
 )
 
 target_include_directories(sfml-research-demo PRIVATE include)
