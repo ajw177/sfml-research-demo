@@ -44,7 +44,16 @@ int main() {
 
     // Register a default font
     ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->AddFontDefault();
+
+    ImFont* font = io.Fonts->AddFontFromFileTTF(
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        18.0f
+    );
+
+    if (font == nullptr) {
+        std::cerr << "Failed to load Arial font\n";
+    }
+
 
     // Editor settings
     bool playMode = false;
@@ -543,6 +552,10 @@ int main() {
         // -----------------------------
         if (!playMode) {
             ImGui::Begin("Inspector");
+            ImGui::Text("FONT TEST: 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+            ImGui::Text("VALUES: 100 200 350 450 999");
+            
+
 
             if (selectedObject >= 0 &&
                 selectedObject < static_cast<int>(objects.size())) {
@@ -576,7 +589,7 @@ int main() {
                     size.y
                 };
 
-                if (ImGui::DragFloat2("Size", dimensions, 1.f)) {
+                if (ImGui::DragFloat2("Dimensions", dimensions, 1.f)) {
                     dimensions[0] = std::max(20.f, dimensions[0]);
                     dimensions[1] = std::max(20.f, dimensions[1]);
 
