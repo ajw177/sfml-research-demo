@@ -1,7 +1,7 @@
 # SFML Research Demo
 
 CSCE 490 – Capstone Research Milestone
-Video Link: https://youtu.be/SlZZXaf1XgI
+https://youtu.be/SlZZXaf1XgI
 
 ## Project Overview
 
